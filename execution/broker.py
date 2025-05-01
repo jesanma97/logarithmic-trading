@@ -19,6 +19,7 @@ def execute_trades(positions):
             price = api.get_last_trade(ticker).price
             cash = float(api.get_account().cash)
             amount = int((cash * abs(weight)) // price)
+            investment = amount * price
             if amount > 0:
                 side = 'buy' if weight > 0 else 'sell'
                 # Ejecutamos la orden de compra o venta
@@ -36,8 +37,10 @@ def execute_trades(positions):
                 
                 # Enviar mensaje por Telegram sobre la compra/venta
                 action = "comprado" if side == 'buy' else "vendido"
-                send_telegram_message(f"📈 Operación realizada: {action} {amount} de {ticker} a {price} EUR. SL: {sl}, TP: {tp}")
-
+                send_telegram_message(
+                    f"📈 Operación realizada: {action} {amount} de {ticker} a {price:.2f} EUR. "
+                    f"Inversión: {investment:.2f} EUR. SL: {sl:.2f}, TP: {tp:.2f}"
+                )
         except Exception as e:
             print(f"Error al operar {ticker}: {e}")
             send_telegram_message(f"⚠️ Error al operar {ticker}: {e}")
