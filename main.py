@@ -8,6 +8,14 @@ from model.lstm_model import train_lstm_model, predict_lstm_returns
 from strategy.risk_manager import generate_signals, apply_risk_controls
 from execution.broker import execute_trades, close_positions, monitor_stops
 from utils.scheduler import schedule_training, combine_predictions
+import os
+import alpaca_trade_api as tradeapi
+
+ALPACA_API_KEY = os.getenv("ALPACA_API_KEY")
+ALPACA_SECRET_KEY = os.getenv("ALPACA_SECRET_KEY")
+BASE_URL = "https://paper-api.alpaca.markets"
+
+api = tradeapi.REST(ALPACA_API_KEY, ALPACA_SECRET_KEY, BASE_URL, api_version='v2')
 
 # Obtener datos
 price_data = get_data()
@@ -28,8 +36,14 @@ lstm_predictions = predict_lstm_returns(lstm_model, price_data)
 combined_predictions = combine_predictions(price_data, rf_predictions, lstm_predictions)
 
 # Generación de señales y ejecución
+# Obtener equity actual de la cuenta
+account_equity = float(api.get_account().equity)
+
+# Calcular rendimientos históricos
+historical_returns = price_data.pct_change().dropna()
+
 signals = generate_signals(price_data, combined_predictions)
-filtered_signals = apply_risk_controls(signals, price_data)
+filtered_signals = apply_risk_controls(signals, price_data, account_equity, historical_returns)
 
 execute_trades(filtered_signals)
 close_positions(filtered_signals)

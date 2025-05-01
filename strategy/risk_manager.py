@@ -1,5 +1,11 @@
 import numpy as np
 
+def generate_signals(data, predictions, threshold=0.01):
+    signals = {}
+    for ticker, pred in predictions.items():
+        signals[ticker] = "BUY" if pred[0] > threshold else "SELL" if pred[0] < -threshold else "HOLD"
+    return signals
+
 def apply_risk_controls(signals, data, account_equity, historical_returns):
     filtered = {}
     max_drawdown_allowed = 0.15  # Máximo drawdown permitido antes de frenar operaciones
