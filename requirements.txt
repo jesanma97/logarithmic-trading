@@ -5,3 +5,4 @@ scikit-learn
 keras
 tensorflow
 requests
+alpaca-trade-api
