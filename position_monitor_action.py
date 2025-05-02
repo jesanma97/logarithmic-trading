@@ -9,6 +9,7 @@ import alpaca_trade_api as tradeapi
 import logging
 from datetime import datetime
 import requests
+from utils.environment import ALPACA_API_KEY, ALPACA_SECRET_KEY, BASE_URL, TELEGRAM_API_TOKEN, TELEGRAM_CHAT_ID
 
 # Configuración de logging
 logging.basicConfig(
@@ -17,14 +18,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("position_monitor")
 
-# Configuración de Alpaca
-ALPACA_API_KEY = os.getenv("ALPACA_API_KEY")
-ALPACA_SECRET_KEY = os.getenv("ALPACA_SECRET_KEY")
-BASE_URL = os.getenv("BASE_URL", "https://paper-api.alpaca.markets")
-
-# Configuración de Telegram
-TELEGRAM_API_TOKEN = os.getenv("TELEGRAM_API_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+# Configuración de Alpaca - Usando las variables importadas del módulo environment
 
 # Archivo para almacenar información de las operaciones
 TRADE_LOG_FILE = "trade_log.json"

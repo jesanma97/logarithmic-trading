@@ -6,15 +6,12 @@ from data.data_loader import get_data
 from model.predictor import train_model, predict_returns
 from model.lstm_model import train_lstm_model, predict_lstm_returns
 from strategy.risk_manager import generate_signals, apply_risk_controls
-from execution.broker import execute_trades, close_positions, monitor_stops
+from execution.broker import execute_trades, close_positions
 from utils.scheduler import schedule_training, combine_predictions
-import os
+from utils.environment import ALPACA_API_KEY, ALPACA_SECRET_KEY, BASE_URL
 import alpaca_trade_api as tradeapi
 
-ALPACA_API_KEY = os.getenv("ALPACA_API_KEY")
-ALPACA_SECRET_KEY = os.getenv("ALPACA_SECRET_KEY")
-BASE_URL = "https://paper-api.alpaca.markets"
-
+# Inicialización de la API con las variables de entorno importadas
 api = tradeapi.REST(ALPACA_API_KEY, ALPACA_SECRET_KEY, BASE_URL, api_version='v2')
 
 # Obtener datos
@@ -47,4 +44,3 @@ filtered_signals = apply_risk_controls(signals, price_data, account_equity, hist
 
 execute_trades(filtered_signals)
 close_positions(filtered_signals)
-monitor_stops()

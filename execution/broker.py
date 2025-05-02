@@ -3,11 +3,9 @@ import os
 import json
 from datetime import datetime
 from utils.telegram_notifier import send_telegram_message
+from utils.environment import ALPACA_API_KEY, ALPACA_SECRET_KEY, BASE_URL
 
-ALPACA_API_KEY = os.getenv("ALPACA_API_KEY")
-ALPACA_SECRET_KEY = os.getenv("ALPACA_SECRET_KEY")
-BASE_URL = os.getenv("BASE_URL", "https://paper-api.alpaca.markets")
-
+# Inicializar la API con las variables importadas
 api = tradeapi.REST(ALPACA_API_KEY, ALPACA_SECRET_KEY, BASE_URL, api_version='v2')
 
 # Archivo para almacenar información de las operaciones

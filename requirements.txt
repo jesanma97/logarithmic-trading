@@ -6,3 +6,4 @@ keras
 tensorflow
 requests
 alpaca-trade-api
+python-dotenv
