@@ -266,8 +266,7 @@ def send_position_updates(trade_log, symbol, position_data, price, pnl_pct):
 
 if __name__ == "__main__":
     logger.info("Iniciando monitorización de posiciones (GitHub Actions)")
-    send_telegram_message("🤖 Monitorización de posiciones iniciada via GitHub Actions")
-    
+        
     # Ejecutar monitoreo
     trade_log = monitor_positions()
     
