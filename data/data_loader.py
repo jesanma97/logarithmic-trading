@@ -12,7 +12,7 @@ def get_data():
     """
     # Primero, descargar datos para el primer ticker para establecer el índice
     first_ticker = TICKERS[0]
-    all_data = yf.download(first_ticker, period="1y", interval="1d")
+    all_data = yf.download(first_ticker, period="1y", interval="1d", auto_adjust=True)
     
     # Inicializar el DataFrame con el primer ticker
     data = pd.DataFrame(index=all_data.index)
@@ -20,7 +20,7 @@ def get_data():
     
     # Añadir el resto de tickers
     for ticker in TICKERS[1:]:
-        df = yf.download(ticker, period="1y", interval="1d")
+        df = yf.download(ticker, period="1y", interval="1d", auto_adjust=True)
         # Usar solo los datos que coinciden con el índice existente
         data[ticker] = df['Close']
     
