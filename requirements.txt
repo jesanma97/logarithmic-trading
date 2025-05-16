@@ -5,6 +5,6 @@ scikit-learn
 keras
 tensorflow
 requests
-alpha-vantage
-alpaca-trade-api
+alpha-vantage==2.3.1
+alpaca-trade-api==3.0.0
 python-dotenv
