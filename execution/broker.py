@@ -26,51 +26,74 @@ def save_trade_log(trade_log):
         json.dump(trade_log, f, indent=4)
 
 def execute_trades(positions):
+    """
+    Ejecuta operaciones basadas en las posiciones calculadas.
+    
+    Args:
+        positions: Diccionario con ticker como clave y peso como valor.
+                  Peso positivo = posición larga, negativo = posición corta
+    """
     trade_log = load_trade_log()
     
-    current_date = positions.index[-1]
-    row = positions.loc[current_date]
+    # Si no hay posiciones para ejecutar, retornamos
+    if not positions:
+        print("No hay nuevas posiciones para ejecutar")
+        return
     
-    for ticker, weight in row.items():
+    # Obtener el efectivo disponible en la cuenta
+    try:
+        cash = float(api.get_account().cash)
+    except Exception as e:
+        print(f"Error obteniendo información de la cuenta: {e}")
+        send_telegram_message(f"⚠️ Error obteniendo información de la cuenta: {e}")
+        return
+    
+    # Ejecutar operaciones para cada ticker
+    for ticker, weight in positions.items():
         try:
+            # Obtener precio actual
             price = api.get_last_trade(ticker).price
-            cash = float(api.get_account().cash)
-            amount = int((cash * abs(weight)) // price)
-            investment = amount * price
             
-            if amount > 0:
-                side = 'buy' if weight > 0 else 'sell'
+            # Calcular cantidad de acciones a comprar/vender
+            amount = int((cash * abs(weight)) // price)
+            
+            # Si la cantidad es 0, no ejecutamos
+            if amount <= 0:
+                continue
                 
-                # Ejecutamos la orden de compra o venta
-                api.submit_order(
-                    symbol=ticker,
-                    qty=amount,
-                    side=side,
-                    type='market',
-                    time_in_force='day'
-                )
-                
-                # Registrar precio de entrada y niveles de SL/TP
-                sl = price * 0.97 if side == 'buy' else price * 1.03
-                tp = price * 1.05 if side == 'buy' else price * 0.95
-                
-                # Guardar en el registro de operaciones para el monitor continuo
-                trade_log[ticker] = {
-                    'entry': price,
-                    'qty': amount,
-                    'side': side,
-                    'sl': sl,
-                    'tp': tp,
-                    'entry_time': datetime.now().isoformat(),
-                    'last_update': datetime.now().isoformat()
-                }
-                
-                # Enviar mensaje por Telegram sobre la compra/venta
-                action = "comprado" if side == 'buy' else "vendido"
-                send_telegram_message(
-                    f"📈 Operación realizada: {action} {amount} de {ticker} a {price:.2f} USD. "
-                    f"Inversión: {investment:.2f} USD. SL: {sl:.2f}, TP: {tp:.2f}"
-                )
+            investment = amount * price
+            side = 'buy' if weight > 0 else 'sell'
+            
+            # Ejecutamos la orden
+            api.submit_order(
+                symbol=ticker,
+                qty=amount,
+                side=side,
+                type='market',
+                time_in_force='day'
+            )
+            
+            # Calcular niveles de SL/TP
+            sl = price * 0.97 if side == 'buy' else price * 1.03
+            tp = price * 1.05 if side == 'buy' else price * 0.95
+            
+            # Guardar en el registro de operaciones
+            trade_log[ticker] = {
+                'entry': price,
+                'qty': amount,
+                'side': side,
+                'sl': sl,
+                'tp': tp,
+                'entry_time': datetime.now().isoformat(),
+                'last_update': datetime.now().isoformat()
+            }
+            
+            # Enviar mensaje por Telegram
+            action = "comprado" if side == 'buy' else "vendido"
+            send_telegram_message(
+                f"📈 Operación realizada: {action} {amount} de {ticker} a {price:.2f} USD. "
+                f"Inversión: {investment:.2f} USD. SL: {sl:.2f}, TP: {tp:.2f}"
+            )
         except Exception as e:
             print(f"Error al operar {ticker}: {e}")
             send_telegram_message(f"⚠️ Error al operar {ticker}: {e}")
@@ -79,15 +102,26 @@ def execute_trades(positions):
     save_trade_log(trade_log)
 
 def close_positions(target_positions):
+    """
+    Cierra posiciones que ya no están en la lista de posiciones objetivo.
+    
+    Args:
+        target_positions: Diccionario con posiciones objetivo
+    """
     trade_log = load_trade_log()
     
-    current_positions = api.list_positions()
+    try:
+        current_positions = api.list_positions()
+    except Exception as e:
+        print(f"Error al obtener posiciones actuales: {e}")
+        return
+        
     for pos in current_positions:
         symbol = pos.symbol
         qty = int(float(pos.qty))
-        target_weight = target_positions.iloc[-1].get(symbol, 0)
         
-        if target_weight == 0:
+        # Si el símbolo no está en posiciones objetivo o tiene peso 0, cerramos
+        if symbol not in target_positions or abs(target_positions.get(symbol, 0)) < 0.01:
             side = 'sell' if pos.side == 'long' else 'buy'
             try:
                 api.submit_order(
