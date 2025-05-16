@@ -51,8 +51,20 @@ def execute_trades(positions):
     # Ejecutar operaciones para cada ticker
     for ticker, weight in positions.items():
         try:
-            # Obtener precio actual
-            price = api.get_last_trade(ticker).price
+            # Obtener precio actual - Actualizado para usar el método correcto en la API de Alpaca
+            # En versiones recientes se usa get_latest_trade en lugar de get_last_trade
+            try:
+                last_trade = api.get_latest_trade(ticker)
+                price = last_trade.price
+            except AttributeError:
+                # Intento alternativo si get_latest_trade no existe
+                try:
+                    last_quote = api.get_latest_quote(ticker)
+                    price = (last_quote.ask_price + last_quote.bid_price) / 2
+                except:
+                    # Último intento usando barras
+                    latest_bar = api.get_latest_bar(ticker)
+                    price = latest_bar.c
             
             # Calcular cantidad de acciones a comprar/vender
             amount = int((cash * abs(weight)) // price)
