@@ -1,7 +1,3 @@
-#!/usr/bin/env python
-# === position_monitor_action.py ===
-# Versión adaptada para GitHub Actions del monitor de posiciones
-
 import os
 import json
 import pandas as pd
@@ -144,8 +140,20 @@ def monitor_positions():
         # Monitorizar cada posición
         for symbol in list(trade_log.keys()):
             try:
-                # Obtener precio actual
-                price = api.get_last_trade(symbol).price
+                # Obtener precio actual - Actualizado para usar el método correcto
+                try:
+                    last_trade = api.get_latest_trade(symbol)
+                    price = last_trade.price
+                except AttributeError:
+                    # Intento alternativo si get_latest_trade no existe
+                    try:
+                        last_quote = api.get_latest_quote(symbol)
+                        price = (last_quote.ask_price + last_quote.bid_price) / 2
+                    except:
+                        # Último intento usando barras
+                        latest_bar = api.get_latest_bar(symbol)
+                        price = latest_bar.c
+                
                 position_data = trade_log[symbol]
                 side = position_data['side']
                 sl = position_data['sl']
