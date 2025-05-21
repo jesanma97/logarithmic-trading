@@ -11,7 +11,7 @@ def generate_signals(data, predictions, threshold=0.005):  # Umbral reducido a 0
         signals[ticker] = "BUY" if pred[0] > threshold else "SELL" if pred[0] < -threshold else "HOLD"
     return signals
 
-def apply_risk_controls(signals, data, account_equity, historical_returns):
+def apply_risk_controls(signals, data, account_equity, historical_returns, predictions):
     filtered = {}
     max_drawdown_allowed = 0.20  # Aumentado de 0.15 a 0.20 para ser menos restrictivo
     
