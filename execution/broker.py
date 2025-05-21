@@ -42,7 +42,12 @@ def execute_trades(positions):
     
     # Obtener el efectivo disponible en la cuenta
     try:
-        cash = float(api.get_account().cash)
+        account = api.get_account()
+        cash = float(account.cash)
+        equity = float(account.equity)
+        
+        # Para calcular correctamente los tamaños de posición usamos el equity total
+        available_capital = equity
     except Exception as e:
         print(f"Error obteniendo información de la cuenta: {e}")
         send_telegram_message(f"⚠️ Error obteniendo información de la cuenta: {e}")
@@ -50,9 +55,15 @@ def execute_trades(positions):
     
     # Ejecutar operaciones para cada ticker
     for ticker, weight in positions.items():
+        # Omitir si el peso es demasiado pequeño
+        if abs(weight) < 0.01:
+            continue
+            
         try:
+            # Determinar el lado de la operación
+            side = 'buy' if weight > 0 else 'sell'
+            
             # Obtener precio actual - Actualizado para usar el método correcto en la API de Alpaca
-            # En versiones recientes se usa get_latest_trade en lugar de get_last_trade
             try:
                 last_trade = api.get_latest_trade(ticker)
                 price = last_trade.price
@@ -66,15 +77,66 @@ def execute_trades(positions):
                     latest_bar = api.get_latest_bar(ticker)
                     price = latest_bar.c
             
-            # Calcular cantidad de acciones a comprar/vender
-            amount = int((cash * abs(weight)) // price)
+            # Calcular cantidad de acciones a comprar/vender basado en el peso asignado
+            target_position_value = available_capital * abs(weight)
+            amount = int(target_position_value // price)
             
             # Si la cantidad es 0, no ejecutamos
             if amount <= 0:
+                print(f"Cantidad calculada para {ticker} es 0, omitiendo operación")
                 continue
                 
             investment = amount * price
-            side = 'buy' if weight > 0 else 'sell'
+            
+            # Verificar posición actual para no duplicar órdenes
+            try:
+                current_position = api.get_position(ticker)
+                current_qty = int(float(current_position.qty))
+                current_side = current_position.side
+                
+                # Si ya tenemos una posición en la misma dirección, ajustamos la cantidad
+                if (side == 'buy' and current_side == 'long') or (side == 'sell' and current_side == 'short'):
+                    print(f"Ya existe posición en {ticker} en la misma dirección. Ajustando cantidad.")
+                    send_telegram_message(f"ℹ️ Ya existe posición en {ticker}. Ajustando en lugar de abrir nueva.")
+                    
+                    # Calcular la diferencia en la cantidad
+                    if side == 'buy':
+                        qty_diff = amount - current_qty
+                    else:
+                        qty_diff = amount - abs(current_qty)
+                    
+                    # Si necesitamos ajustar la posición
+                    if abs(qty_diff) > 0:
+                        adj_side = side if qty_diff > 0 else ('sell' if side == 'buy' else 'buy')
+                        api.submit_order(
+                            symbol=ticker,
+                            qty=abs(qty_diff),
+                            side=adj_side,
+                            type='market',
+                            time_in_force='day'
+                        )
+                        send_telegram_message(
+                            f"🔄 Ajustada posición en {ticker}: {adj_side} {abs(qty_diff)} acciones."
+                        )
+                    continue
+                
+                # Si tenemos una posición en dirección opuesta, la cerramos primero
+                if (side == 'buy' and current_side == 'short') or (side == 'sell' and current_side == 'long'):
+                    print(f"Cerrando posición opuesta en {ticker} antes de abrir nueva.")
+                    close_side = 'buy' if current_side == 'short' else 'sell'
+                    api.submit_order(
+                        symbol=ticker,
+                        qty=abs(current_qty),
+                        side=close_side,
+                        type='market',
+                        time_in_force='day'
+                    )
+                    send_telegram_message(f"🔄 Cerrada posición opuesta en {ticker} antes de abrir nueva.")
+                    
+            except Exception as e:
+                # Si no existe posición, continuamos normalmente
+                if "position does not exist" not in str(e).lower():
+                    print(f"Error verificando posición actual de {ticker}: {e}")
             
             # Ejecutamos la orden
             api.submit_order(
