@@ -6,16 +6,16 @@ import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
 from model.predictor import train_model
-from model.lstm_model import train_lstm_model
+from model.lstm_model import train_lstm_model, load_lstm_models
 
 # Configuración de logging
 logger = logging.getLogger("trading_bot")
 
 # Ruta para guardar modelos
 MODEL_DIR = "./models"
+os.makedirs(MODEL_DIR, exist_ok=True)
 LAST_TRAIN_FILE = os.path.join(MODEL_DIR, "last_train_date.txt")
 RF_MODEL_FILE = os.path.join(MODEL_DIR, "rf_model.pkl")
-LSTM_MODEL_FILE = os.path.join(MODEL_DIR, "lstm_model.pkl")
 
 def schedule_training(data):
     """
@@ -32,7 +32,7 @@ def schedule_training(data):
     should_train = _check_training_required()
     
     # Si se requiere entrenamiento o los modelos no existen
-    if should_train or not os.path.exists(RF_MODEL_FILE) or not os.path.exists(LSTM_MODEL_FILE):
+    if should_train or not os.path.exists(RF_MODEL_FILE):
         try:
             logger.info("Entrenando nuevos modelos...")
             
@@ -40,8 +40,8 @@ def schedule_training(data):
             rf_model = train_model(data)
             lstm_model = train_lstm_model(data)
             
-            # Guardar modelos entrenados
-            _save_models(rf_model, lstm_model)
+            # Guardar modelo RandomForest (los LSTM se guardan durante su entrenamiento)
+            _save_rf_model(rf_model)
             
             # Actualizar fecha de último entrenamiento
             with open(LAST_TRAIN_FILE, 'w') as f:
@@ -53,12 +53,12 @@ def schedule_training(data):
         except Exception as e:
             logger.error(f"Error durante el entrenamiento programado: {e}")
             # En caso de error, intentar cargar modelos existentes
-            rf_model, lstm_model = _load_models()
+            rf_model, lstm_model = _load_models(data)
             return rf_model, lstm_model
     else:
         # Si no es necesario entrenar, cargar modelos existentes
         logger.info("Cargando modelos existentes...")
-        rf_model, lstm_model = _load_models()
+        rf_model, lstm_model = _load_models(data)
         return rf_model, lstm_model
 
 def _check_training_required():
@@ -95,38 +95,37 @@ def _check_training_required():
         logger.warning(f"Error verificando fecha de entrenamiento: {e}. Reentrenando por seguridad...")
         return True
 
-def _save_models(rf_model, lstm_model):
+def _save_rf_model(rf_model):
     """
-    Guarda los modelos entrenados en disco.
+    Guarda el modelo RandomForest entrenado en disco.
     
     Args:
         rf_model: Modelo RandomForest entrenado
-        lstm_model: Modelo LSTM entrenado
     """
     # Crear directorio si no existe
     os.makedirs(MODEL_DIR, exist_ok=True)
     
-    # Guardar modelos usando pickle
+    # Guardar modelo usando pickle
     try:
         with open(RF_MODEL_FILE, 'wb') as f:
             pickle.dump(rf_model, f)
             
-        with open(LSTM_MODEL_FILE, 'wb') as f:
-            pickle.dump(lstm_model, f)
-            
-        logger.info("Modelos guardados correctamente")
+        logger.info("Modelo RandomForest guardado correctamente")
     except Exception as e:
-        logger.error(f"Error guardando modelos: {e}")
+        logger.error(f"Error guardando modelo RandomForest: {e}")
 
-def _load_models():
+def _load_models(data):
     """
     Carga los modelos previamente guardados.
     
+    Args:
+        data: DataFrame con los datos históricos (para saber qué tickers cargar)
+        
     Returns:
         tuple: (modelo_rf, modelo_lstm) - modelos cargados o None si ocurre un error
     """
     rf_model = None
-    lstm_model = None
+    lstm_model = {}
     
     # Intentar cargar modelo RandomForest
     if os.path.exists(RF_MODEL_FILE):
@@ -137,14 +136,12 @@ def _load_models():
         except Exception as e:
             logger.error(f"Error cargando modelo RandomForest: {e}")
     
-    # Intentar cargar modelo LSTM
-    if os.path.exists(LSTM_MODEL_FILE):
-        try:
-            with open(LSTM_MODEL_FILE, 'rb') as f:
-                lstm_model = pickle.load(f)
-            logger.info("Modelo LSTM cargado correctamente")
-        except Exception as e:
-            logger.error(f"Error cargando modelo LSTM: {e}")
+    # Cargar modelos LSTM y sus escaladores
+    try:
+        lstm_model, _ = load_lstm_models(data.columns)
+        logger.info(f"Cargados {len(lstm_model)} modelos LSTM correctamente")
+    except Exception as e:
+        logger.error(f"Error cargando modelos LSTM: {e}")
     
     return rf_model, lstm_model
 
@@ -164,16 +161,33 @@ def combine_predictions(data, rf_predictions, lstm_predictions, rf_weight=0.6):
     combined = {}
     lstm_weight = 1 - rf_weight
     
+    # Asegurarse de que tenemos predicciones para trabajar
+    if not rf_predictions:
+        logger.warning("No hay predicciones del modelo RandomForest. Usando solo LSTM.")
+        return lstm_predictions
+        
+    if not lstm_predictions:
+        logger.warning("No hay predicciones del modelo LSTM. Usando solo RandomForest.")
+        return rf_predictions
+    
+    # Combinar predicciones disponibles
     for ticker in data.columns:
+        # Caso 1: Tenemos ambas predicciones
         if ticker in rf_predictions and ticker in lstm_predictions:
-            # Obtener predicciones individuales
             rf_pred = rf_predictions[ticker][0]
             lstm_pred = lstm_predictions[ticker][0]
-            
-            # Combinar con pesos
             combined_pred = (rf_weight * rf_pred) + (lstm_weight * lstm_pred)
             combined[ticker] = [combined_pred]
-            
             logger.debug(f"{ticker}: RF={rf_pred:.4f}, LSTM={lstm_pred:.4f}, Combined={combined_pred:.4f}")
+            
+        # Caso 2: Solo tenemos predicción RandomForest
+        elif ticker in rf_predictions:
+            combined[ticker] = rf_predictions[ticker]
+            logger.debug(f"{ticker}: Solo RF={rf_predictions[ticker][0]:.4f}")
+            
+        # Caso 3: Solo tenemos predicción LSTM
+        elif ticker in lstm_predictions:
+            combined[ticker] = lstm_predictions[ticker]
+            logger.debug(f"{ticker}: Solo LSTM={lstm_predictions[ticker][0]:.4f}")
     
     return combined
