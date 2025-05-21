@@ -5,15 +5,41 @@ import logging
 # Configuración de logging
 logger = logging.getLogger("trading_bot")
 
-def generate_signals(data, predictions, threshold=0.005):  # Umbral reducido a 0.5%
+def generate_signals(data, predictions, threshold=0.005):
+    """
+    Genera señales de operación basadas en predicciones.
+    
+    Args:
+        data: DataFrame con los datos históricos
+        predictions: Diccionario con predicciones para cada ticker
+        threshold: Umbral mínimo de rendimiento esperado para generar señal
+    
+    Returns:
+        dict: Diccionario con ticker como clave y señal como valor ('BUY', 'SELL', 'HOLD')
+              Solo para uso informativo y debugging
+    """
     signals = {}
     for ticker, pred in predictions.items():
         signals[ticker] = "BUY" if pred[0] > threshold else "SELL" if pred[0] < -threshold else "HOLD"
     return signals
 
 def apply_risk_controls(signals, data, account_equity, historical_returns, predictions):
+    """
+    Aplica controles de riesgo y genera pesos de posición.
+    
+    Args:
+        signals: Diccionario con ticker como clave y señal como valor ('BUY', 'SELL', 'HOLD')
+        data: DataFrame con los datos históricos
+        account_equity: Capital total disponible en la cuenta
+        historical_returns: DataFrame con retornos históricos
+        predictions: Diccionario con predicciones para cada ticker
+    
+    Returns:
+        dict: Diccionario con ticker como clave y peso como valor.
+              Peso positivo = posición larga, negativo = posición corta
+    """
     filtered = {}
-    max_drawdown_allowed = 0.20  # Aumentado de 0.15 a 0.20 para ser menos restrictivo
+    max_drawdown_allowed = 0.20
     
     # Log para depuración
     logger.info(f"Aplicando control de riesgo a {len(signals)} señales")
@@ -65,13 +91,11 @@ def apply_risk_controls(signals, data, account_equity, historical_returns, predi
         logger.info(f"{ticker}: Volatilidad {volatility:.4f}, ATR estimado {atr_estimate:.2f}")
         
         # Filtro de volatilidad (evitar activos extremadamente volátiles)
-        # Aumentado de 0.03 a 0.05 para ser menos restrictivo
-        if volatility > 0.05:  # Más del 5% de volatilidad diaria (antes era 3%)
+        if volatility > 0.05:  # Más del 5% de volatilidad diaria
             logger.info(f"{ticker}: Rechazado por alta volatilidad ({volatility:.4f} > 0.05)")
             continue
 
         # Filtro de tendencia: solo operar en dirección de la media móvil de 50 días
-        # (si hay suficientes datos)
         trend_check_passed = True
         if len(closes) >= 50:
             ma_50 = closes.rolling(window=50).mean().iloc[-1]
@@ -85,11 +109,8 @@ def apply_risk_controls(signals, data, account_equity, historical_returns, predi
                 logger.info(f"{ticker}: Rechazado por tendencia (precio {price:.2f} > MA50 {ma_50:.2f})")
                 trend_check_passed = False
                 
-        # Si al menos una señal ha estado bloqueada por más de 3 días, 
-        # ignoramos los filtros de tendencia (para forzar operaciones)
+        # Si no pasa el filtro de tendencia, continuamos
         if not trend_check_passed:
-            # En un sistema real, se implementaría una verificación del tiempo bloqueado
-            # Por ahora, solo log informativo
             continue
 
         # Calcular tamaño máximo permitido de posición (por ejemplo, 2% del capital en riesgo)
@@ -100,10 +121,10 @@ def apply_risk_controls(signals, data, account_equity, historical_returns, predi
         if stop_loss > 0:
             max_position_size = risk_per_trade / stop_loss
             price = closes.iloc[-1]
-            # Aumentamos el peso máximo de posición de 0.2 a 0.25
+            # Calculamos el peso máximo como porcentaje del capital total
             max_position_weight = min(0.25, (max_position_size * price) / account_equity)
             
-            # En lugar de signal, usamos un valor numérico para la posición
+            # Convertimos la señal textual a un valor numérico (peso)
             position_value = max_position_weight if signal == "BUY" else -max_position_weight
             filtered[ticker] = position_value
             logger.info(f"{ticker}: Señal aprobada con peso {position_value:.4f}")
