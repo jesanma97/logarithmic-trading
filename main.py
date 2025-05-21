@@ -23,6 +23,8 @@ from model.lstm_model import predict_lstm_returns
 from strategy.risk_manager import generate_signals, apply_risk_controls
 from utils.scheduler import schedule_training, combine_predictions
 from utils.telegram_notifier import send_telegram_message
+# Importar módulo de ejecución de operaciones
+from execution.broker import execute_trades, close_positions
 
 def main():
     try:
@@ -100,7 +102,9 @@ def main():
         
         # Aplicar controles de riesgo
         try:
-            account_equity = 10000  # Simulación de capital, en un caso real vendría de la API de broker
+            # En un caso real, obtendríamos el capital de la cuenta desde la API del broker
+            # Por ahora usamos un valor simulado
+            account_equity = 10000  # Simulación de capital
             filtered_signals = apply_risk_controls(signals, price_data, account_equity, historical_returns, predictions)
             
             if not filtered_signals:
@@ -113,18 +117,28 @@ def main():
             logger.error(f"Error aplicando controles de riesgo: {e}")
             return
             
-        # En un sistema real, aquí ejecutaríamos las órdenes mediante la API del broker
-        # Simulación de ejecutar órdenes
-        message = "🤖 <b>Operaciones para hoy:</b>\n\n"
-        
-        for ticker, weight in filtered_signals.items():
-            direction = "COMPRA" if weight > 0 else "VENTA"
-            target_price = price_data[ticker].iloc[-1] * (1 + predictions.get(ticker, [0])[0])
-            message += f"✅ <b>{ticker}</b>: {direction} - Objetivo: ${target_price:.2f} ({abs(weight)*100:.1f}% del capital)\n"
+        # Ejecutar las operaciones utilizando el broker
+        try:
+            logger.info("Cerrando posiciones que ya no son relevantes...")
+            close_positions(filtered_signals)
             
-        # Enviar notificación
-        logger.info("Enviando notificación...")
-        send_telegram_message(message)
+            logger.info("Ejecutando nuevas operaciones...")
+            execute_trades(filtered_signals)
+            
+            # Construir mensaje de notificación
+            message = "🤖 <b>Operaciones para hoy:</b>\n\n"
+            
+            for ticker, weight in filtered_signals.items():
+                direction = "COMPRA" if weight > 0 else "VENTA"
+                target_price = price_data[ticker].iloc[-1] * (1 + predictions.get(ticker, [0])[0])
+                message += f"✅ <b>{ticker}</b>: {direction} - Objetivo: ${target_price:.2f} ({abs(weight)*100:.1f}% del capital)\n"
+                
+            # Enviar notificación
+            logger.info("Enviando notificación...")
+            send_telegram_message(message)
+        except Exception as e:
+            logger.error(f"Error ejecutando operaciones: {e}")
+            send_telegram_message(f"❌ Error ejecutando operaciones: {e}")
         
         logger.info("=== EJECUCIÓN COMPLETADA ===")
         
