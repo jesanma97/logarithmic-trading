@@ -85,7 +85,7 @@ def main():
         logger.info(f"Señales generadas: {signals}")
         
         # Aplicar controles de riesgo
-        filtered_signals = apply_risk_controls(signals, price_data, account_equity, historical_returns)
+        filtered_signals = apply_risk_controls(signals, price_data, account_equity, historical_returns, combined_predictions)
         logger.info(f"Señales filtradas: {filtered_signals}")
         
         # Ejecutar operaciones solo si hay señales filtradas
